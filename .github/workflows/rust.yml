@@ -2,7 +2,6 @@ name: Rust
 
 on:
   push:
-    branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
 
@@ -15,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Cache Rust dependencies
-        uses: actions/cache@v1.0.1
+        uses: actions/cache@v3
         with:
           path: target
           key: ${{ runner.OS }}-build-${{ hashFiles('**/Cargo.lock') }}
@@ -28,12 +27,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: target/release/date-cli
+          name: linux-release
   build-mac:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
       - name: Cache Rust dependencies
-        uses: actions/cache@v1.0.1
+        uses: actions/cache@v3
         with:
           path: target
           key: ${{ runner.OS }}-build-${{ hashFiles('**/Cargo.lock') }}
@@ -46,3 +46,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: target/release/date-cli
+          name: macOS-release
