@@ -55,13 +55,16 @@ fn try_get_relative_dt(input: &str) -> Option<DateTime<Utc>> {
 }
 
 fn parse_string_to_local_datetime(date_string: &str) -> Option<DateTime<Local>> {
-    let naive_datetime = NaiveDateTime::parse_from_str(date_string, "%Y-%m-%d %H:%M:%S").unwrap();
-    Local.from_local_datetime(&naive_datetime).single()
+    NaiveDateTime::parse_from_str(date_string, "%Y-%m-%d %H:%M:%S")
+        .ok().and_then(|dt| Local.from_local_datetime(&dt).single())
 }
 
 fn try_get_absolute_dt(input: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(input).ok()
-        .or(parse_string_to_local_datetime(input).map(|dt| dt.with_timezone(Local::now().offset())))
+        .or(
+            parse_string_to_local_datetime(input)
+                .map(|dt| dt.with_timezone(Local::now().offset()))
+        )
         .map(|dt| dt.with_timezone(Utc::now().offset()))
 }
 
@@ -72,24 +75,80 @@ fn input_to_time(input: Option<String>) -> Option<DateTime<Utc>> {
     }
 }
 
-fn main() {
-    let args = Cli::parse();
+fn produce_time_output(args: Cli) -> String {
     let (show_epoch, show_millis, show_readable) = (args.format.epoch, args.format.millis, args.format.readable);
 
     let dt = input_to_time(args.input).expect("Invalid input, not able to parse input, input when defined must comply to `rfc 3339`, `YYYY-MM-DD`");
 
     match (show_epoch, show_millis, show_readable) {
-        (true, _, _) => println!("{}", dt.timestamp()),
-        (_, true, _) => println!("{}", dt.timestamp_millis().to_string()),
+        (true, _, _) => dt.timestamp().to_string(),
+        (_, true, _) => dt.timestamp_millis().to_string(),
         (_, _, true) =>
             match args.output_format {
                 None => unreachable!(),
                 Some(ReadableOutputFormat::UTC) =>
-                    println!("{}", dt.with_timezone(Utc::now().offset()).duration_trunc(Duration::milliseconds(100)).unwrap()),
+                    dt.with_timezone(Utc::now().offset()).duration_trunc(Duration::milliseconds(100)).expect("Failed to truncate time to millis").to_rfc3339(),
                 Some(ReadableOutputFormat::Local) =>
-                    println!("{}", dt.with_timezone(Local::now().offset()).duration_trunc(Duration::milliseconds(100)).unwrap()),
+                    dt.with_timezone(Local::now().offset()).duration_trunc(Duration::milliseconds(100)).expect("Failed to truncate time to millis").to_rfc3339()
             }
         _ => unreachable!()
     }
 }
 
+fn main() {
+    let args = Cli::parse();
+    let output = produce_time_output(args);
+    println!("{}", output);
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_no_input_epoch() {
+        let arg = Cli {
+            format: OutputFormat { epoch: true, millis: false, readable: false },
+            input: None,
+            output_format: None,
+        };
+        let res = produce_time_output(arg);
+        let expected = Utc::now().timestamp_millis();
+        assert!(res.parse::<i64>().unwrap() * 1000 <= expected)
+    }
+
+    #[test]
+    fn test_input_rfc3339_readable() {
+        let arg = Cli {
+            format: OutputFormat { epoch: false, millis: false, readable: true },
+            input: Some(String::from("2022-02-02T01:00:00Z")),
+            output_format: Some(ReadableOutputFormat::Local),
+        };
+        let res = produce_time_output(arg);
+        assert_eq!(DateTime::parse_from_rfc3339(res.as_str()).is_ok(), true);
+    }
+    #[test]
+    fn test_input_local_time() {
+        let arg = Cli {
+            format: OutputFormat { epoch: false, millis: false, readable: true },
+            input: Some(String::from("2022-02-02 01:00:00")),
+            output_format: Some(ReadableOutputFormat::Local),
+        };
+        let res = produce_time_output(arg);
+        assert_eq!(DateTime::parse_from_rfc3339(res.as_str()).is_ok(), true);
+    }
+
+    #[test]
+    fn test_input_relative() {
+        let arg = Cli {
+            format: OutputFormat { epoch: false, millis: false, readable: true },
+            input: Some(String::from("2 hours ago")),
+            output_format: Some(ReadableOutputFormat::Local),
+        };
+        let res = produce_time_output(arg);
+        assert_eq!(DateTime::parse_from_rfc3339(res.as_str()).is_ok(), true);
+    }
+
+
+}
